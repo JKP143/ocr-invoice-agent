@@ -1,0 +1,862 @@
+{
+  "name": "OCR Invoice Agent",
+  "nodes": [
+    {
+      "id": "9356f492-024f-4e6f-a212-46594c9f49ba",
+      "name": "Telegram Trigger",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        400
+      ],
+      "parameters": {
+        "updates": [
+          "message"
+        ],
+        "additionalFields": {
+          "download": false
+        }
+      },
+      "webhookId": "4c764da0-5ae8-457a-adc2-ec0c99d421b3"
+    },
+    {
+      "id": "382d3468-e679-44b6-b975-d6db6fc2f81a",
+      "name": "Switch - Input Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        420,
+        400
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "id": "r1a",
+                    "leftValue": "={{ $json.message.photo }}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "array",
+                      "operation": "notEmpty",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "photo"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "id": "r1b",
+                    "leftValue": "={{ $json.message.document?.mime_type || '' }}",
+                    "rightValue": "application/pdf",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "pdf"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra",
+          "renameFallbackOutput": "other",
+          "looseTypeValidation": true
+        }
+      }
+    },
+    {
+      "id": "5e55cea8-d66f-45dc-bdcd-dca7d0fdd3fd",
+      "name": "Set - Normalize",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        640,
+        300
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "n1",
+              "name": "file_id",
+              "type": "string",
+              "value": "={{ $json.message.photo ? $json.message.photo[$json.message.photo.length - 1].file_id : $json.message.document.file_id }}"
+            },
+            {
+              "id": "n2",
+              "name": "file_ext",
+              "type": "string",
+              "value": "={{ $json.message.photo ? \"jpg\" : \"pdf\" }}"
+            },
+            {
+              "id": "n3",
+              "name": "is_pdf",
+              "type": "boolean",
+              "value": "={{ !$json.message.photo }}"
+            },
+            {
+              "id": "n4",
+              "name": "orig_name",
+              "type": "string",
+              "value": "={{ $json.message.document?.file_name || \"\" }}"
+            },
+            {
+              "id": "n5",
+              "name": "telegram_user_id",
+              "type": "number",
+              "value": "={{ $json.message.from.id }}"
+            },
+            {
+              "id": "n6",
+              "name": "telegram_chat_id",
+              "type": "number",
+              "value": "={{ $json.message.chat.id }}"
+            },
+            {
+              "id": "n7",
+              "name": "telegram_message_id",
+              "type": "number",
+              "value": "={{ $json.message.message_id }}"
+            }
+          ]
+        },
+        "includeOtherFields": false
+      }
+    },
+    {
+      "id": "4687d559-0cc3-48a6-bf3a-44962e84e6fd",
+      "name": "Telegram - Reject",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        640,
+        700
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $json.message.chat.id }}",
+        "text": "Please send a photo (JPEG/PNG) or a PDF of the invoice.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "5e5dd7fd-c7e3-4dc0-bff7-5bf96db6a4e5"
+    },
+    {
+      "id": "1041f219-2af2-4668-a60a-5acf2e210959",
+      "name": "Telegram - Get File",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        860,
+        300
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "get",
+        "fileId": "={{ $json.file_id }}",
+        "download": true
+      },
+      "webhookId": "c35519cf-fd3b-434b-988f-3f4f9be89f7d"
+    },
+    {
+      "id": "07a222ac-95c6-438a-8bc1-21b020601104",
+      "name": "Google Drive - Upload",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        2140,
+        400
+      ],
+      "parameters": {
+        "resource": "file",
+        "operation": "upload",
+        "inputDataFieldName": "data",
+        "name": "=invoice-{{ $('Set - Normalize').item.json.telegram_message_id }}-{{ $now.toFormat('yyyyMMdd-HHmmss') }}.{{ $('Set - Normalize').item.json.file_ext }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive",
+          "cachedResultName": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "root",
+          "cachedResultName": "/ (Root folder)"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "870d469c-8ce6-43fe-ac0f-01104fd9d3dc",
+      "name": "Switch - By File Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1300,
+        300
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "id": "r2a",
+                    "leftValue": "={{ $('Set - Normalize').item.json.is_pdf }}",
+                    "rightValue": false,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "image"
+            },
+            {
+              "conditions": {
+                "conditions": [
+                  {
+                    "id": "r2b",
+                    "leftValue": "={{ $('Set - Normalize').item.json.is_pdf }}",
+                    "rightValue": true,
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and",
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose"
+                }
+              },
+              "renameOutput": true,
+              "outputKey": "pdf"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "none",
+          "looseTypeValidation": true
+        }
+      }
+    },
+    {
+      "id": "14ec3379-7d31-4a05-8f52-985c652a44be",
+      "name": "Gemini - Analyze Image",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        140
+      ],
+      "parameters": {
+        "resource": "image",
+        "operation": "analyze",
+        "modelId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "models/gemini-2.5-flash",
+          "cachedResultName": "gemini-2.5-flash"
+        },
+        "text": "Extract invoice fields from this image. Return ONLY valid JSON matching this schema:\n{\n  \"vendor_name\": string|null,\n  \"invoice_number\": string|null,\n  \"invoice_date\": \"YYYY-MM-DD\"|null,\n  \"invoice_datetime_pretty\": string|null,\n  \"due_date\": \"YYYY-MM-DD\"|null,\n  \"subtotal\": number|null,\n  \"tax\": number|null,\n  \"total\": number|null,\n  \"currency\": \"ISO 4217 code\"|null,\n  \"payment_method\": string|null,\n  \"discounts\": [{\"label\": string, \"amount\": number}],\n  \"pax\": number|null,\n  \"seniors_count\": number|null,\n  \"pwd_count\": number|null,\n  \"cashier\": string|null,\n  \"line_items\": [{\"description\": string, \"quantity\": number, \"unit_price\": number, \"line_total\": number}]\n}\n\nRules:\n- Dates in ISO 8601 (YYYY-MM-DD). If only month/year is visible, use the 1st.\n- invoice_datetime_pretty: human-readable datetime copied from the receipt, e.g. 'Dec 19, 2025 (Fri) 05:29 PM'. Null if not visible.\n- Amounts are numbers only (no currency symbols, no thousands separators).\n- Currency is the ISO 4217 code. Infer from symbols (\u20b1 = PHP, \u00a5 = JPY, $ = USD, \u20ac = EUR) or context (e.g. 'Senior Discount' and 'PWD Discount' imply PHP).\n- payment_method: e.g. 'Credit (Master Card)', 'Cash', 'Debit'. Null if not visible.\n- discounts: array of {label, amount as POSITIVE number} for each discount/adjustment line (EVAT, Senior Discount, PWD Discount, etc.). [] if none.\n- pax, seniors_count, pwd_count: integers from receipt (look for PAX, #SENIORS, #PWD labels). Null if not visible.\n- cashier: cashier name/id from receipt. Null if not visible.\n- If a field is not visible or unclear, return null. Do NOT invent data.\n- line_items: one object per row. Return [] if none visible.\n- Output ONLY the JSON object, no markdown fences, no commentary.",
+        "inputType": "binary",
+        "binaryPropertyName": "data",
+        "simplify": true,
+        "options": {
+          "maxOutputTokens": 8000
+        }
+      }
+    },
+    {
+      "id": "d9ca6c01-afe7-473a-afa6-505bf1cd4d9e",
+      "name": "AI Agent - Vision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1740,
+        140
+      ],
+      "parameters": {
+        "language": "javaScript",
+        "jsCode": "const item = $input.item.json;\n\nconst raw =\n  item?.content?.parts?.[0]?.text ??\n  item?.parts?.[0]?.text ??\n  item?.response?.parts?.[0]?.text ??\n  item?.candidates?.[0]?.content?.parts?.[0]?.text ??\n  (typeof item?.content === 'string' ? item.content : null) ??\n  (typeof item?.text === 'string' ? item.text : null) ??\n  (typeof item?.response === 'string' ? item.response : null);\n\nif (typeof raw !== 'string') {\n  throw new Error('Could not find text in Gemini response. Top-level keys: ' + Object.keys(item || {}).join(', '));\n}\n\nlet cleaned = raw\n  .replace(/^```json\\s*/i, '')\n  .replace(/^```\\s*/i, '')\n  .replace(/\\s*```\\s*$/, '')\n  .trim();\n\nconst repair = (s) => s\n  .replace(/,(\\s*[}\\]])/g, '$1')\n  .replace(/[\\u201C\\u201D]/g, '\"')\n  .replace(/[\\u2018\\u2019]/g, \"'\");\n\ntry { return { output: JSON.parse(cleaned) }; } catch (_) {}\ntry { return { output: JSON.parse(repair(cleaned)), _repaired: true }; } catch (_) {}\n\nconst firstBrace = cleaned.indexOf('{');\nif (firstBrace >= 0) {\n  let depth = 0, inStr = false, esc = false, lastValidEnd = -1;\n  for (let i = firstBrace; i < cleaned.length; i++) {\n    const c = cleaned[i];\n    if (esc) { esc = false; continue; }\n    if (c === '\\\\' && inStr) { esc = true; continue; }\n    if (c === '\"') { inStr = !inStr; continue; }\n    if (inStr) continue;\n    if (c === '{') depth++;\n    else if (c === '}') { depth--; if (depth === 0) { lastValidEnd = i; break; } }\n  }\n  if (lastValidEnd > 0) {\n    const slice = cleaned.slice(firstBrace, lastValidEnd + 1);\n    try { return { output: JSON.parse(slice), _recovered: true }; } catch (_) {}\n    try { return { output: JSON.parse(repair(slice)), _recovered: true, _repaired: true }; } catch (_) {}\n  }\n}\n\nconst finish = item?.finishReason ?? item?.candidates?.[0]?.finishReason ?? 'unknown';\nthrow new Error('Failed to parse Gemini JSON (finishReason=' + finish + '). If MAX_TOKENS, increase maxOutputTokens. Raw length: ' + raw.length + '. First 400 chars: ' + raw.slice(0, 400));"
+      }
+    },
+    {
+      "id": "7e8ed4ea-b264-44dc-b6c5-6c261e9e2dc6",
+      "name": "Extract from PDF",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1.1,
+      "position": [
+        1540,
+        640
+      ],
+      "parameters": {
+        "operation": "pdf",
+        "binaryPropertyName": "data",
+        "options": {
+          "joinPages": true,
+          "keepSource": "both"
+        }
+      }
+    },
+    {
+      "id": "ce2f783a-b75b-4530-9b1f-bc88fee0bbd6",
+      "name": "AI Agent - Text",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        1740,
+        640
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Extract the invoice fields from the following invoice text. Return JSON only.\n\n---\n{{ $json.text }}\n---",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an invoice-extraction assistant. You receive the raw text extracted from an invoice PDF. Extract the fields defined in the output schema exactly.\n\nRules:\n- Dates in ISO 8601 (YYYY-MM-DD). If only month/year is visible, use the 1st.\n- invoice_datetime_pretty: human-readable datetime copied from the receipt, e.g. 'Dec 19, 2025 (Fri) 05:29 PM'. Null if not visible.\n- Amounts are numbers only (no currency symbols, no thousands separators).\n- Currency is the ISO 4217 code. Infer from symbols or context (e.g. 'Senior Discount' and 'PWD Discount' imply PHP).\n- payment_method: e.g. 'Credit (Master Card)', 'Cash', 'Debit'. Null if not visible.\n- discounts: array of {label, amount as POSITIVE number} for each discount/adjustment line (EVAT, Senior Discount, PWD Discount, etc.). [] if none.\n- pax, seniors_count, pwd_count: integers from receipt. Null if not visible.\n- cashier: cashier name/id. Null if not visible.\n- If a field is not visible or unclear, return null. Do NOT invent data.\n- line_items: one object per row. Return [] if none visible.\n- Ignore anything not part of the invoice.",
+          "passthroughBinaryImages": false
+        }
+      }
+    },
+    {
+      "id": "b5aa2c92-44f1-4877-a532-b80fee9d7d78",
+      "name": "Gemini (Text)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1740,
+        720
+      ],
+      "parameters": {
+        "modelName": "models/gemini-2.5-flash",
+        "options": {
+          "temperature": 0.2
+        }
+      }
+    },
+    {
+      "id": "74d12078-b586-4eab-b9f0-54c1e87371e6",
+      "name": "Parser (Text)",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1900,
+        720
+      ],
+      "parameters": {
+        "schemaType": "fromJson",
+        "jsonSchemaExample": "{\"vendor_name\":\"Acme Corp\",\"invoice_number\":\"INV-001\",\"invoice_date\":\"2026-04-20\",\"invoice_datetime_pretty\":\"Apr 20, 2026 10:30 AM\",\"due_date\":\"2026-05-20\",\"subtotal\":100,\"tax\":12,\"total\":112,\"currency\":\"USD\",\"payment_method\":\"Credit Card\",\"discounts\":[{\"label\":\"Promo\",\"amount\":10}],\"pax\":1,\"seniors_count\":0,\"pwd_count\":0,\"cashier\":\"John\",\"line_items\":[{\"description\":\"Widget\",\"quantity\":2,\"unit_price\":50,\"line_total\":100}]}"
+      }
+    },
+    {
+      "id": "f91a3d27-1c8b-4e5a-9f6d-2a3c8b4f9e1a",
+      "name": "Attach Binary",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "language": "javaScript",
+        "jsCode": "const gf = $('Telegram - Get File').first();\nreturn { json: $input.item.json, binary: gf?.binary || {} };"
+      }
+    },
+    {
+      "id": "73add9f7-3d18-4fc7-bae1-2a31315e2e00",
+      "name": "Supabase - Insert Invoice",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        2360,
+        400
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "invoices",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "vendor_name",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).vendor_name }}"
+            },
+            {
+              "fieldId": "invoice_number",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).invoice_number }}"
+            },
+            {
+              "fieldId": "invoice_date",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).invoice_date }}"
+            },
+            {
+              "fieldId": "invoice_datetime_pretty",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).invoice_datetime_pretty }}"
+            },
+            {
+              "fieldId": "due_date",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).due_date }}"
+            },
+            {
+              "fieldId": "subtotal",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).subtotal }}"
+            },
+            {
+              "fieldId": "tax",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).tax }}"
+            },
+            {
+              "fieldId": "total",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).total }}"
+            },
+            {
+              "fieldId": "currency",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).currency }}"
+            },
+            {
+              "fieldId": "payment_method",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).payment_method }}"
+            },
+            {
+              "fieldId": "discounts",
+              "fieldValue": "={{ JSON.stringify(($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).discounts || []) }}"
+            },
+            {
+              "fieldId": "pax",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).pax }}"
+            },
+            {
+              "fieldId": "seniors_count",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).seniors_count }}"
+            },
+            {
+              "fieldId": "pwd_count",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).pwd_count }}"
+            },
+            {
+              "fieldId": "cashier",
+              "fieldValue": "={{ ($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {}).cashier }}"
+            },
+            {
+              "fieldId": "source_type",
+              "fieldValue": "={{ $('Set - Normalize').item.json.is_pdf ? 'pdf' : 'photo' }}"
+            },
+            {
+              "fieldId": "drive_file_url",
+              "fieldValue": "={{ $('Google Drive - Upload').first().json.webViewLink }}"
+            },
+            {
+              "fieldId": "telegram_user_id",
+              "fieldValue": "={{ $('Set - Normalize').item.json.telegram_user_id }}"
+            },
+            {
+              "fieldId": "telegram_chat_id",
+              "fieldValue": "={{ $('Set - Normalize').item.json.telegram_chat_id }}"
+            },
+            {
+              "fieldId": "telegram_file_id",
+              "fieldValue": "={{ $('Set - Normalize').item.json.file_id }}"
+            },
+            {
+              "fieldId": "raw_extraction",
+              "fieldValue": "={{ JSON.stringify(($('AI Agent - Vision').first()?.json?.output || $('AI Agent - Text').first()?.json?.output || {})) }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "628f464a-8ff2-4d0e-9f1c-e7caada0dd15",
+      "name": "Set - Line Items Context",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        2580,
+        400
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "l1",
+              "name": "invoice_id",
+              "type": "string",
+              "value": "={{ $json.id }}"
+            },
+            {
+              "id": "l2",
+              "name": "line_items",
+              "type": "array",
+              "value": "={{ $('AI Agent - Vision').first()?.json?.output?.line_items || $('AI Agent - Text').first()?.json?.output?.line_items || [] }}"
+            }
+          ]
+        },
+        "includeOtherFields": false
+      }
+    },
+    {
+      "id": "158670a1-d307-4bb3-9b6a-9ffa1ed4b051",
+      "name": "Split Out - Line Items",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        2800,
+        400
+      ],
+      "parameters": {
+        "fieldToSplitOut": "line_items",
+        "include": "allOtherFields"
+      }
+    },
+    {
+      "id": "28523a17-abe5-4162-ab0c-4aeee9f1402a",
+      "name": "Supabase - Insert Line Item",
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [
+        3020,
+        400
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "create",
+        "tableId": "invoice_line_items",
+        "dataToSend": "defineBelow",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "invoice_id",
+              "fieldValue": "={{ $json.invoice_id }}"
+            },
+            {
+              "fieldId": "description",
+              "fieldValue": "={{ $json.description }}"
+            },
+            {
+              "fieldId": "quantity",
+              "fieldValue": "={{ $json.quantity }}"
+            },
+            {
+              "fieldId": "unit_price",
+              "fieldValue": "={{ $json.unit_price }}"
+            },
+            {
+              "fieldId": "line_total",
+              "fieldValue": "={{ $json.line_total }}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "c8a17b3e-4f42-4a9b-9d1e-5e8cfb3d1a2f",
+      "name": "Format Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3240,
+        400
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const safeGet = (name) => { try { return $(name).first()?.json; } catch (e) { return null; } };\n\nconst v = safeGet('AI Agent - Vision')?.output;\nconst t = safeGet('AI Agent - Text')?.output;\nconst data = v || t || {};\nconst drive = safeGet('Google Drive - Upload') || {};\nconst sbRow = safeGet('Supabase - Insert Invoice') || {};\n\nconst na = (x) => (x === null || x === undefined || x === '') ? 'N/A' : x;\nconst money = (x) => (x === null || x === undefined || x === '') ? 'N/A' : Number(x).toFixed(2);\n\nconst discountsArr = Array.isArray(data.discounts) ? data.discounts : [];\nconst discountsStr = discountsArr.length === 0\n  ? 'None'\n  : discountsArr.map(d => `${d.label || 'Discount'} (-${Math.abs(Number(d.amount) || 0).toFixed(2)})`).join(', ');\n\nconst currency = data.currency ? ' ' + data.currency : '';\nconst driveName = drive.name ? ' as `' + drive.name + '`' : '';\nconst driveUrl = drive.webViewLink || '';\n\nconst lines = [];\nlines.push('*Thanks for submitting your invoice!*');\nlines.push('');\nlines.push('*Here are the key details I extracted:*');\nlines.push(`- Merchant/Store: ${na(data.vendor_name)}`);\nlines.push(`- Invoice No.: ${na(data.invoice_number)}`);\nlines.push(`- Invoice Date: ${na(data.invoice_datetime_pretty || data.invoice_date)}`);\nlines.push(`- Total Amount: ${money(data.total)}${currency}`);\nlines.push(`- Payment Method: ${na(data.payment_method)}`);\nlines.push('');\nlines.push('*Notes summary:*');\nlines.push(`- Subtotal: ${money(data.subtotal)}`);\nlines.push(`- Discounts applied: ${discountsStr}`);\nlines.push(`- Final total charged: ${money(data.total)}`);\nlines.push(`- Pax: ${na(data.pax)} | Seniors: ${na(data.seniors_count)} | PWD: ${na(data.pwd_count)}`);\nlines.push(`- Cashier: ${na(data.cashier)}`);\nlines.push('');\nlines.push(`The original invoice has been saved to Google Drive${driveName}.`);\nlines.push('');\nif (driveUrl) lines.push(`Original invoice image: [Original File](${driveUrl})`);\nif (sbRow.id) lines.push(`Invoice DB row ID: \\`${sbRow.id}\\``);\n\nreturn [{ json: { message_text: lines.join('\\n'), invoice_id: sbRow.id || null } }];"
+      }
+    },
+    {
+      "id": "3807c9c5-7645-4874-9a96-74c85a72cc77",
+      "name": "Telegram - Reply",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3460,
+        400
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendMessage",
+        "chatId": "={{ $('Set - Normalize').item.json.telegram_chat_id }}",
+        "text": "={{ $json.message_text }}",
+        "additionalFields": {
+          "parse_mode": "Markdown",
+          "appendAttribution": false
+        }
+      },
+      "executeOnce": true,
+      "webhookId": "47260630-c461-4979-92d1-a1bc42563045"
+    }
+  ],
+  "connections": {
+    "Telegram Trigger": {
+      "main": [
+        [
+          {
+            "node": "Switch - Input Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch - Input Type": {
+      "main": [
+        [
+          {
+            "node": "Set - Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Set - Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Reject",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Normalize": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Get File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Get File": {
+      "main": [
+        [
+          {
+            "node": "Switch - By File Type",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Drive - Upload": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Insert Invoice",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach Binary": {
+      "main": [
+        [
+          {
+            "node": "Google Drive - Upload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Switch - By File Type": {
+      "main": [
+        [
+          {
+            "node": "Gemini - Analyze Image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract from PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini - Analyze Image": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Vision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Vision": {
+      "main": [
+        [
+          {
+            "node": "Attach Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from PDF": {
+      "main": [
+        [
+          {
+            "node": "AI Agent - Text",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent - Text": {
+      "main": [
+        [
+          {
+            "node": "Attach Binary",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gemini (Text)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent - Text",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parser (Text)": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent - Text",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Insert Invoice": {
+      "main": [
+        [
+          {
+            "node": "Set - Line Items Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set - Line Items Context": {
+      "main": [
+        [
+          {
+            "node": "Split Out - Line Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out - Line Items": {
+      "main": [
+        [
+          {
+            "node": "Supabase - Insert Line Item",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Supabase - Insert Line Item": {
+      "main": [
+        [
+          {
+            "node": "Format Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Reply": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {},
+  "meta": {
+    "aiBuilderAssisted": true
+  }
+}

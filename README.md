@@ -2,7 +2,7 @@
 
 > Send a photo or PDF of an invoice to a Telegram bot. Get back a structured row in Supabase, a copy archived in Google Drive, and a confirmation reply — all in seconds.
 
-![placeholder — drop a screenshot of the bot reply in docs/screenshots/ and link it here](docs/screenshots/.gitkeep)
+![OCR Invoice Agent — n8n workflow canvas](docs/screenshots/workflow-full.png)
 
 ## What it does
 
